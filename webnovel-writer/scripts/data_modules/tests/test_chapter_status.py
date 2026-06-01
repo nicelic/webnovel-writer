@@ -68,6 +68,22 @@ def test_set_chapter_status_idempotent(state_project):
     assert sm.get_chapter_status(5) == "chapter_drafted"
 
 
+def test_set_chapter_status_persists_without_direct_save(state_project, monkeypatch):
+    sm = _make_manager(state_project)
+    sm._load_state()
+
+    def boom():
+        raise AssertionError("_save_state should not be called")
+
+    monkeypatch.setattr(sm, "_save_state", boom)
+
+    sm.set_chapter_status(5, "chapter_drafted")
+
+    saved = json.loads((state_project / ".webnovel" / "state.json").read_text(encoding="utf-8"))
+    assert saved["progress"]["chapter_status"]["5"] == "chapter_drafted"
+    assert sm.get_chapter_status(5) == "chapter_drafted"
+
+
 def test_set_chapter_status_invalid(state_project):
     sm = _make_manager(state_project)
     sm._load_state()

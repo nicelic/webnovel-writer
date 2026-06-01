@@ -396,6 +396,35 @@ def test_save_state_progress_and_disambiguation_merge(temp_project):
     assert len(saved["disambiguation_pending"]) == 1
 
 
+def test_set_chapter_status_preserves_existing_disk_state(temp_project):
+    temp_project.state_file.write_text(
+        json.dumps({"progress": {"current_chapter": 4}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    manager = StateManager(temp_project, enable_sqlite_sync=False)
+
+    external_state = {
+        "progress": {
+            "current_chapter": 8,
+            "chapter_status": {"3": "chapter_committed"},
+        },
+        "disambiguation_warnings": [{"chapter": 4, "mention": "宗主"}],
+    }
+    temp_project.state_file.write_text(
+        json.dumps(external_state, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    manager.set_chapter_status(5, "chapter_drafted")
+
+    saved = json.loads(temp_project.state_file.read_text(encoding="utf-8"))
+    assert saved["progress"]["current_chapter"] == 8
+    assert saved["progress"]["chapter_status"]["3"] == "chapter_committed"
+    assert saved["progress"]["chapter_status"]["5"] == "chapter_drafted"
+    assert saved["disambiguation_warnings"] == [{"chapter": 4, "mention": "宗主"}]
+
+
 def test_sync_to_sqlite_exceptions_and_no_sql_manager(temp_project, monkeypatch):
     manager = StateManager(temp_project)
     manager._pending_progress_chapter = 1

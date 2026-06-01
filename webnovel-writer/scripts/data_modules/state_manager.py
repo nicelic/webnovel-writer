@@ -144,6 +144,7 @@ class StateManager:
         self._pending_disambiguation_pending: List[Dict[str, Any]] = []
         self._pending_progress_chapter: Optional[int] = None
         self._pending_progress_words_delta: int = 0
+        self._pending_chapter_status: Dict[str, str] = {}
         self._pending_chapter_meta: Dict[str, Any] = {}
 
         # v5.1 引入: 缓存待同步到 SQLite 的数据
@@ -246,6 +247,7 @@ class StateManager:
                 self._pending_chapter_meta,
                 self._pending_progress_chapter is not None,
                 self._pending_progress_words_delta != 0,
+                self._pending_chapter_status,
             ]
         )
         if not has_pending:
@@ -281,6 +283,18 @@ class StateManager:
                             total_words = 0
                         progress["total_words"] = total_words + int(self._pending_progress_words_delta)
 
+                    progress["last_updated"] = self._now_progress_timestamp()
+
+                if self._pending_chapter_status:
+                    progress = disk_state.get("progress", {})
+                    if not isinstance(progress, dict):
+                        progress = {}
+                        disk_state["progress"] = progress
+                    chapter_status = progress.get("chapter_status")
+                    if not isinstance(chapter_status, dict):
+                        chapter_status = {}
+                        progress["chapter_status"] = chapter_status
+                    chapter_status.update(self._pending_chapter_status)
                     progress["last_updated"] = self._now_progress_timestamp()
 
                 # v5.1 引入: 强制使用 SQLite 模式，移除大数据字段
@@ -373,6 +387,7 @@ class StateManager:
                 self._pending_chapter_meta.clear()
                 self._pending_progress_chapter = None
                 self._pending_progress_words_delta = 0
+                self._pending_chapter_status.clear()
 
                 # SQLite 侧 pending：成功后清空，失败则恢复快照（避免静默丢数据）
                 if sqlite_sync_ok:
@@ -660,7 +675,8 @@ class StateManager:
         progress = self._state.setdefault("progress", {})
         chapter_status = progress.setdefault("chapter_status", {})
         chapter_status[str(chapter)] = status
-        self._save_state()
+        self._pending_chapter_status[str(chapter)] = status
+        self.save_state()
 
     def _save_state(self) -> None:
         """直接持久化当前内存状态到 state.json（轻量写入，不走 pending 合并）。"""
