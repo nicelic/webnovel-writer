@@ -376,6 +376,18 @@ def test_dashboard_chapter_trend_endpoint_returns_recent_window(monkeypatch, tmp
 def test_dashboard_commits_and_contract_summary_endpoints(monkeypatch, tmp_path):
     project_root = tmp_path / "book"
     _build_project_data(project_root)
+    from data_modules.projection_log import append_projection_run
+
+    commit_path = project_root / ".story-system" / "commits" / "chapter_002.commit.json"
+    logged_payload = json.loads(commit_path.read_text(encoding="utf-8"))
+    logged_payload["projection_status"] = dict(logged_payload["projection_status"])
+    logged_payload["projection_status"]["vector"] = "failed:timeout"
+    append_projection_run(
+        project_root,
+        logged_payload,
+        {"vector": {"status": "failed:timeout", "error": "timeout"}},
+        commit_path=commit_path,
+    )
     client = _create_dashboard_client(monkeypatch, project_root)
 
     commits_response = client.get("/api/commits", params={"limit": 2})
@@ -383,7 +395,10 @@ def test_dashboard_commits_and_contract_summary_endpoints(monkeypatch, tmp_path)
     commits_payload = commits_response.json()
     assert [item["chapter"] for item in commits_payload["items"]] == [3, 2]
     assert commits_payload["items"][0]["status"] == "rejected"
-    assert commits_payload["items"][1]["projection_status"]["vector"] == "done"
+    assert commits_payload["items"][0]["projection_source"] == "commit"
+    assert commits_payload["items"][1]["projection_source"] == "projection_log"
+    assert commits_payload["items"][1]["projection_status"]["vector"] == "failed:timeout"
+    assert commits_payload["items"][1]["projection_run"]["run_id"]
 
     contracts_response = client.get("/api/contracts/summary")
     assert contracts_response.status_code == 200

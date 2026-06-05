@@ -225,6 +225,30 @@ def _build_env_status(project_root: Path) -> dict:
     }
 
 
+def _projection_status_for_commit(project_root: Path, chapter: int, commit_payload: dict) -> tuple[dict, str, dict]:
+    try:
+        from data_modules.projection_log import latest_projection_run, projection_status_from_run
+
+        latest_run = latest_projection_run(project_root, chapter=chapter)
+    except Exception:
+        latest_run = None
+
+    if isinstance(latest_run, dict):
+        projection_status = projection_status_from_run(latest_run)
+        return (
+            projection_status if isinstance(projection_status, dict) else {},
+            "projection_log",
+            {
+                "run_id": str(latest_run.get("run_id") or ""),
+                "status": str(latest_run.get("status") or ""),
+                "created_at": str(latest_run.get("created_at") or ""),
+                "commit_hash": str(latest_run.get("commit_hash") or ""),
+            },
+        )
+
+    return commit_payload.get("projection_status") or {}, "commit", {}
+
+
 # ---------------------------------------------------------------------------
 # 应用工厂
 # ---------------------------------------------------------------------------
@@ -503,11 +527,18 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
             meta = payload.get("meta") if isinstance(payload, dict) else {}
             provenance = payload.get("provenance") if isinstance(payload, dict) else {}
             chapter = int((meta or {}).get("chapter") or _extract_story_chapter(path))
+            projection_status, projection_source, projection_run = _projection_status_for_commit(
+                _get_project_root(),
+                chapter,
+                payload if isinstance(payload, dict) else {},
+            )
             items.append(
                 {
                     "chapter": chapter,
                     "status": str((meta or {}).get("status") or "missing"),
-                    "projection_status": payload.get("projection_status") or {},
+                    "projection_status": projection_status,
+                    "projection_source": projection_source,
+                    "projection_run": projection_run,
                     "write_fact_role": str((provenance or {}).get("write_fact_role") or ""),
                     "contract_refs": payload.get("contract_refs") or {},
                     "path": path.name,

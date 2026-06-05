@@ -23,6 +23,42 @@ def _load_webnovel_module():
     return webnovel_module
 
 
+def _make_cli_init_ready_project(project_root: Path) -> None:
+    dirs = (
+        ".webnovel/backups",
+        ".webnovel/archive",
+        ".webnovel/summaries",
+        "设定集",
+        "大纲",
+        "正文",
+        "审查报告",
+    )
+    for rel in dirs:
+        (project_root / rel).mkdir(parents=True, exist_ok=True)
+
+    (project_root / ".webnovel" / "state.json").write_text(
+        json.dumps(
+            {
+                "project_info": {"title": "测试书", "genre": "玄幻"},
+                "progress": {"current_chapter": 0},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    for rel in (
+        "设定集/世界观.md",
+        "设定集/力量体系.md",
+        "设定集/主角卡.md",
+        "设定集/反派设计.md",
+        "大纲/总纲.md",
+        ".env.example",
+    ):
+        path = project_root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("placeholder\n", encoding="utf-8")
+
+
 def test_init_does_not_resolve_existing_project_root(monkeypatch):
     module = _load_webnovel_module()
 
@@ -323,6 +359,171 @@ def test_preflight_includes_story_runtime_health(monkeypatch, tmp_path, capsys):
     captured = capsys.readouterr()
     assert '"story_runtime"' in captured.out
     assert '"mainline_ready"' in captured.out
+
+
+def test_project_status_cli_outputs_json_without_reusing_status(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+    project_root = tmp_path / "book"
+    _make_cli_init_ready_project(project_root)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["webnovel", "--project-root", str(project_root), "project-status", "--format", "json"],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert int(exc.value.code or 0) == 0
+    assert report["schema_version"] == "webnovel-project-status/v1"
+    assert report["project"] == "测试书"
+    assert report["phase"] == "init_ready"
+
+
+def test_doctor_cli_reports_missing_init_file(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+    project_root = tmp_path / "book"
+    _make_cli_init_ready_project(project_root)
+    (project_root / "大纲" / "总纲.md").unlink()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["webnovel", "--project-root", str(project_root), "doctor", "--format", "json"],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert int(exc.value.code or 0) == 1
+    assert report["schema_version"] == "webnovel-doctor/v1"
+    assert report["ok"] is False
+    assert any(item["id"] == "file.required.大纲/总纲.md" for item in report["checks"])
+
+
+def test_status_command_still_forwards_to_status_reporter(monkeypatch, tmp_path):
+    module = _load_webnovel_module()
+    project_root = tmp_path / "book"
+    _make_cli_init_ready_project(project_root)
+    called = {}
+
+    def _fake_run_script(script_name, argv):
+        called["script_name"] = script_name
+        called["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(module, "_run_script", _fake_run_script)
+    monkeypatch.setattr(sys, "argv", ["webnovel", "--project-root", str(project_root), "status", "--focus", "all"])
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    assert int(exc.value.code or 0) == 0
+    assert called["script_name"] == "status_reporter.py"
+
+
+def test_write_gate_cli_runs_prewrite(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+    project_root = tmp_path / "book"
+    _make_cli_init_ready_project(project_root)
+    for path, payload in (
+        (project_root / ".story-system" / "MASTER_SETTING.json", {"meta": {"contract_type": "MASTER_SETTING"}}),
+        (project_root / ".story-system" / "volumes" / "volume_001.json", {"meta": {"volume": 1}}),
+        (project_root / ".story-system" / "chapters" / "chapter_001.json", {"chapter_directive": {"must_cover_nodes": []}}),
+        (project_root / ".story-system" / "reviews" / "chapter_001.review.json", {"blocking_rules": []}),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(project_root),
+            "write-gate",
+            "--chapter",
+            "1",
+            "--stage",
+            "prewrite",
+            "--format",
+            "json",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert int(exc.value.code or 0) == 0
+    assert report["schema_version"] == "webnovel-write-gate/v1"
+    assert report["stage"] == "prewrite"
+    assert report["ok"] is True
+
+
+def test_projections_retry_cli_runs(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+    project_root = tmp_path / "book"
+    _make_cli_init_ready_project(project_root)
+    commit_path = project_root / ".story-system" / "commits" / "chapter_001.commit.json"
+    commit_path.parent.mkdir(parents=True, exist_ok=True)
+    commit_path.write_text(
+        json.dumps(
+            {
+                "meta": {"chapter": 1, "status": "rejected"},
+                "review_result": {"blocking_count": 1},
+                "fulfillment_result": {
+                    "planned_nodes": [],
+                    "covered_nodes": [],
+                    "missed_nodes": [],
+                    "extra_nodes": [],
+                },
+                "disambiguation_result": {"pending": []},
+                "extraction_result": {"accepted_events": [], "state_deltas": [], "entity_deltas": []},
+                "projection_status": {
+                    "state": "pending",
+                    "index": "pending",
+                    "summary": "pending",
+                    "memory": "pending",
+                    "vector": "pending",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(project_root),
+            "projections",
+            "retry",
+            "--chapter",
+            "1",
+            "--format",
+            "json",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert int(exc.value.code or 0) == 0
+    assert report["schema_version"] == "webnovel-projections/v1"
+    assert report["projection_status"]["state"] == "done"
 
 
 def test_where_reports_empty_workspace_without_traceback(monkeypatch, tmp_path, capsys):

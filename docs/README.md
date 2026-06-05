@@ -7,6 +7,8 @@
 ### 架构
 
 - [`architecture/overview.md`](./architecture/overview.md)：系统架构、Agent 分工、Story System 设计
+- [`architecture/plugin-runtime-hardening-spec-2026-06-04.md`](./architecture/plugin-runtime-hardening-spec-2026-06-04.md)：基于优秀 Claude Code 插件调研的运行时可靠性重构 spec
+- [`architecture/plugin-runtime-hardening-plan-2026-06-04.md`](./architecture/plugin-runtime-hardening-plan-2026-06-04.md)：运行时可靠性重构实施计划、修改范围与影响分析
 - [`archive/architecture/current-system-diagnosis.md`](./archive/architecture/current-system-diagnosis.md)：历史系统状态诊断
 
 ### 使用指南

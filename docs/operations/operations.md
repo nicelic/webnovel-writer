@@ -41,6 +41,7 @@ project-root/
 │   ├── state.json        # 项目状态
 │   ├── index.db          # SQLite 索引（实体/关系/章节数据）
 │   ├── vectors.db        # 向量索引
+│   ├── projection_log.jsonl # 投影执行日志
 │   ├── summaries/        # 章节摘要
 │   ├── backups/          # 自动备份
 │   └── archive/          # 归档
@@ -63,9 +64,10 @@ project-root/
 
 ```text
 ${CLAUDE_PLUGIN_ROOT}/
-├── skills/       # 7 个 Skill 命令定义
-├── agents/       # 3 个 Agent 定义
+├── skills/       # 8 个 Skill 命令定义
+├── agents/       # 4 个 Agent 定义
 ├── scripts/      # Python 脚本与数据模块
+├── hooks/        # Claude Code 会话钩子
 ├── references/   # 参考文档（题材画像、追读力分类法等）
 ├── templates/    # 初始化模板
 ├── genres/       # 精调题材配置
@@ -86,11 +88,27 @@ ${CLAUDE_HOME:-~/.claude}/webnovel-writer/workspaces.json
 
 ```bash
 python -X utf8 "${CLAUDE_PLUGIN_ROOT}/scripts/webnovel.py" --project-root "${WORKSPACE_ROOT}" preflight
+python -X utf8 "${CLAUDE_PLUGIN_ROOT}/scripts/webnovel.py" --project-root "${WORKSPACE_ROOT}" project-status --format summary
+python -X utf8 "${CLAUDE_PLUGIN_ROOT}/scripts/webnovel.py" --project-root "${WORKSPACE_ROOT}" doctor --format text
 ```
 
-检查项：插件脚本路径 / 项目根是否可解析 / Skill 目录是否存在。
+`preflight` 是快速检查，`project-status` 给短状态和下一步，`doctor` 是阶段感知体检。
+
+检查项：插件脚本路径 / 项目根是否可解析 / Skill 目录是否存在 / 阶段应有文件 / JSON / SQLite / RAG 配置 / Python 依赖 / Dashboard 产物。
 
 若 `story_runtime.mainline_ready=false`，说明当前项目仍在 legacy fallback 或 commit 主链不完整。
+
+### 写章关卡
+
+```bash
+python -X utf8 "${CLAUDE_PLUGIN_ROOT}/scripts/webnovel.py" --project-root "${PROJECT_ROOT}" write-gate --chapter 12 --stage prewrite --format text
+python -X utf8 "${CLAUDE_PLUGIN_ROOT}/scripts/webnovel.py" --project-root "${PROJECT_ROOT}" write-gate --chapter 12 --stage precommit --format text
+python -X utf8 "${CLAUDE_PLUGIN_ROOT}/scripts/webnovel.py" --project-root "${PROJECT_ROOT}" write-gate --chapter 12 --stage postcommit --format text
+```
+
+- `prewrite`：检查项目阶段、runtime contract、占位符和写前必要文件。
+- `precommit`：检查正文和 review / fulfillment / disambiguation / extraction 四类提交产物。
+- `postcommit`：检查 commit 和 projection 状态。
 
 ### 索引重建
 
@@ -106,6 +124,8 @@ python "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" status -- -
 python "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" status -- --focus urgency
 ```
 
+`status` 保留宏观创作健康报告语义；需要机器可读短状态时使用 `project-status`。
+
 ### 向量重建
 
 ```bash
@@ -113,11 +133,38 @@ python "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" rag index-c
 python "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" rag stats
 ```
 
+### 投影补跑
+
+```bash
+python -X utf8 "${CLAUDE_PLUGIN_ROOT}/scripts/webnovel.py" --project-root "${PROJECT_ROOT}" projections retry --chapter 12 --format text
+python -X utf8 "${CLAUDE_PLUGIN_ROOT}/scripts/webnovel.py" --project-root "${PROJECT_ROOT}" projections replay --from-chapter 1 --to-chapter 12 --format text
+```
+
+投影补跑只从已有 `.story-system/commits/*.commit.json` 读取事实，并重新生成 `.webnovel/state.json`、`index.db`、`summaries/`、`memory_scratchpad.json`、`vectors.db` 等 read-model。每次执行会追加 `.webnovel/projection_log.jsonl`。
+
 ### 测试
 
 ```bash
 pwsh "${CLAUDE_PLUGIN_ROOT}/scripts/run_tests.ps1" -Mode smoke
 pwsh "${CLAUDE_PLUGIN_ROOT}/scripts/run_tests.ps1" -Mode full
+python -X utf8 "${CLAUDE_PLUGIN_ROOT}/scripts/run_behavior_evals.py" --format text
+python -X utf8 "${CLAUDE_PLUGIN_ROOT}/scripts/validate_plugin_package.py" --format text
+```
+
+`run_behavior_evals.py` 是快速行为契约检查；`validate_plugin_package.py` 按 plugin-dev 思路检查 manifest、Skill / Agent frontmatter、hooks wrapper、README 版本和路径可移植性。
+
+### Hook 开关
+
+插件级 hook 默认很轻：
+
+- `SessionStart`：只运行 `project-status --format summary`，不写文件、不启动服务。
+- `PreToolUse`：对直接写主链 / read-model 文件和绕过 runtime 的危险命令做兜底阻断。
+
+需要临时关闭时设置环境变量：
+
+```bash
+WEBNOVEL_DISABLE_SESSION_STATUS_HOOK=1
+WEBNOVEL_DISABLE_RUNTIME_GUARD_HOOK=1
 ```
 
 ## Story System 运维

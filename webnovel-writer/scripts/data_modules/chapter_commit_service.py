@@ -99,6 +99,72 @@ class ChapterCommitService:
         write_json(path, payload)
         return path
 
+    def _projection_writers(self) -> dict[str, Any]:
+        from .index_projection_writer import IndexProjectionWriter
+        from .memory_projection_writer import MemoryProjectionWriter
+        from .state_projection_writer import StateProjectionWriter
+        from .summary_projection_writer import SummaryProjectionWriter
+        from .vector_projection_writer import VectorProjectionWriter
+
+        return {
+            "state": StateProjectionWriter(self.project_root),
+            "index": IndexProjectionWriter(self.project_root),
+            "summary": SummaryProjectionWriter(self.project_root),
+            "memory": MemoryProjectionWriter(self.project_root),
+            "vector": VectorProjectionWriter(self.project_root),
+        }
+
+    def _writer_status(self, result: dict[str, Any]) -> str:
+        if result.get("applied"):
+            return "done"
+        reason = str(result.get("reason") or "").strip()
+        if reason in {"not_required", "commit_rejected"}:
+            return "skipped"
+        if reason.startswith("error:"):
+            return f"failed:{reason[6:] or 'writer_error'}"
+        return "skipped"
+
+    def apply_projection_writers(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        status = str((payload.get("meta") or {}).get("status") or "")
+        if status not in {"accepted", "rejected"}:
+            return payload
+
+        payload.setdefault("projection_status", {})
+        if not isinstance(payload["projection_status"], dict):
+            payload["projection_status"] = {}
+
+        writers = self._projection_writers()
+        required_writers = set(EventProjectionRouter().required_writers(payload))
+        writer_results: dict[str, dict[str, Any]] = {}
+        for name, writer in writers.items():
+            if name not in required_writers:
+                payload["projection_status"][name] = "skipped"
+                writer_results[name] = {"status": "skipped", "reason": "not_required"}
+                continue
+            try:
+                result = writer.apply(payload)
+                payload["projection_status"][name] = self._writer_status(result)
+                writer_results[name] = {
+                    "status": payload["projection_status"][name],
+                    "result": result,
+                }
+            except Exception as exc:
+                payload["projection_status"][name] = f"failed:{exc}"
+                writer_results[name] = {"status": "failed", "error": str(exc)}
+        commit_path = self.persist_commit(payload)
+        try:
+            from .projection_log import append_projection_run
+
+            append_projection_run(
+                self.project_root,
+                payload,
+                writer_results,
+                commit_path=commit_path,
+            )
+        except Exception:
+            pass
+        return payload
+
     def apply_projections(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         status = str((payload.get("meta") or {}).get("status") or "")
         if status not in {"accepted", "rejected"}:
@@ -120,28 +186,4 @@ class ChapterCommitService:
                     persist_amend_proposals(conn, chapter, proposals)
                     conn.commit()
 
-        from .index_projection_writer import IndexProjectionWriter
-        from .memory_projection_writer import MemoryProjectionWriter
-        from .state_projection_writer import StateProjectionWriter
-        from .summary_projection_writer import SummaryProjectionWriter
-        from .vector_projection_writer import VectorProjectionWriter
-
-        writers = {
-            "state": StateProjectionWriter(self.project_root),
-            "index": IndexProjectionWriter(self.project_root),
-            "summary": SummaryProjectionWriter(self.project_root),
-            "memory": MemoryProjectionWriter(self.project_root),
-            "vector": VectorProjectionWriter(self.project_root),
-        }
-        required_writers = set(EventProjectionRouter().required_writers(payload))
-        for name, writer in writers.items():
-            if name not in required_writers:
-                payload["projection_status"][name] = "skipped"
-                continue
-            try:
-                result = writer.apply(payload)
-                payload["projection_status"][name] = "done" if result.get("applied") else "skipped"
-            except Exception as exc:
-                payload["projection_status"][name] = f"failed:{exc}"
-        self.persist_commit(payload)
-        return payload
+        return self.apply_projection_writers(payload)

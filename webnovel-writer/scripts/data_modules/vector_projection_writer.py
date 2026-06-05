@@ -27,7 +27,14 @@ class VectorProjectionWriter:
 
         try:
             stored = self._store_chunks(chunks)
-            return {"applied": stored > 0, "writer": "vector", "stored": stored}
+            if stored <= 0:
+                return {
+                    "applied": False,
+                    "writer": "vector",
+                    "stored": stored,
+                    "reason": "error:store_failed",
+                }
+            return {"applied": True, "writer": "vector", "stored": stored}
         except Exception as exc:
             logger.warning("vector_projection_failed: %s", exc)
             return {"applied": False, "writer": "vector", "reason": f"error:{exc}"}

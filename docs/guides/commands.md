@@ -72,6 +72,21 @@
 - 默认只读，不会修改项目文件
 - 前端构建产物已随插件发布，无需本地 `npm build`
 
+### `/webnovel-doctor [--chapter N] [--deep]`
+
+只读体检当前网文项目，检查阶段应有文件、JSON、SQLite、RAG 配置、Python 依赖与 Dashboard 产物，并给出影响和修复建议。
+
+```bash
+/webnovel-doctor
+/webnovel-doctor --chapter 12
+/webnovel-doctor --deep
+```
+
+说明：
+
+- 不写入项目，不安装依赖，不启动服务
+- 会先判断当前项目阶段，init 刚结束时不会按终态项目误报
+
 ## 统一 CLI（命令行使用）
 
 所有 CLI 命令的入口都是 `webnovel.py`，格式：
@@ -115,6 +130,10 @@ python -X utf8 "<CLAUDE_PLUGIN_ROOT>/scripts/webnovel.py" --project-root "<PROJE
 |--------|------|
 | `where` | 打印当前解析出的项目根目录 |
 | `preflight` | 校验 CLI 环境、脚本路径和项目根是否可用 |
+| `project-status` | 输出机器可读短状态（phase、目标章节、下一步），不占用旧 `status` |
+| `doctor` | 阶段感知项目体检（目录、文件、DB、RAG、依赖、Dashboard） |
+| `write-gate` | 写章自然边界校验（`prewrite` / `precommit` / `postcommit`） |
+| `projections` | 从已有 commit 补跑或重放 projection |
 | `use <路径>` | 绑定当前工作区使用的书项目 |
 
 ### 数据模块子命令
@@ -133,7 +152,7 @@ python -X utf8 "<CLAUDE_PLUGIN_ROOT>/scripts/webnovel.py" --project-root "<PROJE
 
 | 子命令 | 说明 |
 |--------|------|
-| `status` | 健康报告（`--focus all` / `--focus urgency`） |
+| `status` | 宏观创作健康报告（`--focus all` / `--focus urgency`），仍转发到 `status_reporter.py` |
 | `update-state` | 手动更新状态 |
 | `backup` | 备份管理 |
 | `archive` | 归档管理 |
@@ -164,6 +183,11 @@ python -X utf8 "<CLAUDE_PLUGIN_ROOT>/scripts/webnovel.py" --project-root "<PROJE
 | `story-system "<题材>" --persist` | 写入合同种子（`MASTER_SETTING.json` 等） |
 | `story-system "<题材>" --emit-runtime-contracts --chapter N` | 生成运行时合同 + 写前校验 |
 | `chapter-commit --chapter N` | 提交章节 commit（可附带 review/fulfillment/disambiguation/extraction 结果） |
+| `write-gate --chapter N --stage prewrite` | 写前检查项目阶段、Story System 合同和占位符 |
+| `write-gate --chapter N --stage precommit` | 提交前检查正文和四类 commit artifacts |
+| `write-gate --chapter N --stage postcommit` | 提交后检查 commit 与 projection 状态 |
+| `projections retry --chapter N` | 基于已有 commit 补跑单章 projection |
+| `projections replay --from-chapter A --to-chapter B` | 按章节范围重放 projection |
 | `story-events --chapter N` | 查询指定章节事件 |
 | `story-events --health` | 事件链健康检查 |
 | `memory-contract` | 记忆合同管理 |

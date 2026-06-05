@@ -127,6 +127,23 @@ def test_rejected_commit_returns_not_applied():
     assert result["applied"] is False
 
 
+def test_store_zero_for_required_chunks_is_error(monkeypatch, tmp_path):
+    writer = VectorProjectionWriter(tmp_path)
+    monkeypatch.setattr(writer, "_store_chunks", lambda chunks: 0)
+
+    result = writer.apply(
+        {
+            "meta": {"status": "accepted", "chapter": 47},
+            "summary_text": "韩立在坊市发现丹方线索。",
+            "accepted_events": [],
+            "entity_deltas": [],
+        }
+    )
+
+    assert result["applied"] is False
+    assert result["reason"] == "error:store_failed"
+
+
 def test_collect_chunks_includes_summary_and_scenes():
     writer = VectorProjectionWriter.__new__(VectorProjectionWriter)
     payload = {

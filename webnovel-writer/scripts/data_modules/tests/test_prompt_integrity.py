@@ -30,7 +30,7 @@ ALL_PROMPT_FILES = AGENT_FILES + SKILL_FILES
 
 # webnovel.py 注册的子命令（从 add_parser 提取）
 REGISTERED_CLI_SUBCOMMANDS = {
-    "where", "preflight", "use",
+    "where", "preflight", "project-status", "doctor", "write-gate", "projections", "use",
     "index", "state", "rag", "style", "entity", "context", "memory",
     "migrate", "status", "update-state", "backup", "archive",
     "init", "extract-context", "memory-contract", "project-memory", "review-pipeline",

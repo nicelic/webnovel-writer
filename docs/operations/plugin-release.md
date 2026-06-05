@@ -19,14 +19,22 @@ python -X utf8 webnovel-writer/scripts/sync_plugin_version.py --version X.Y.Z --
 推荐使用 `Plugin Release` 工作流统一发版：
 
 1. 在本地执行版本同步（见上方命令）
-2. 提交并推送版本变更
-3. 打开仓库 Actions 页面，选择 `Plugin Release`
-4. 输入 `version`（如 `6.0.0`）和 `release_notes`
-5. 工作流自动执行：
+2. 运行插件包校验：
+
+```bash
+python -X utf8 webnovel-writer/scripts/validate_plugin_package.py
+```
+
+3. 提交并推送版本变更
+4. 打开仓库 Actions 页面，选择 `Plugin Release`
+5. 输入 `version`（如 `6.0.0`）和 `release_notes`
+6. 工作流自动执行：
    - 校验 `plugin.json`、`marketplace.json` 与 README 版本一致
    - 校验输入版本与仓库元数据一致
    - 创建并推送 `vX.Y.Z` Tag
    - 创建 GitHub Release
+
+`validate_plugin_package.py` 会复用 `sync_plugin_version.py` 的 README 当前版本解析规则，避免本地校验和现有 `Plugin Version Check` 工作流产生两套互相冲突的版本规则。
 
 ## 自动版本校验
 

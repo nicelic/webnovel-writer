@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import sqlite3
 
 from data_modules.chapter_commit_service import ChapterCommitService
 from data_modules.config import DataModulesConfig
@@ -11,6 +12,7 @@ from data_modules.index_projection_writer import IndexProjectionWriter
 from data_modules.memory_projection_writer import MemoryProjectionWriter
 from data_modules.state_projection_writer import StateProjectionWriter
 from data_modules.summary_projection_writer import SummaryProjectionWriter
+from data_modules.vector_projection_writer import VectorProjectionWriter
 
 
 def test_state_projection_writer_handles_rejected_commit(tmp_path):
@@ -401,6 +403,58 @@ def test_accepted_commit_writes_chapter_index_tables(tmp_path):
     assert changes[0]["field"] == "realm"
 
 
+def test_index_projection_writer_is_idempotent_for_replay(tmp_path):
+    cfg = DataModulesConfig.from_project_root(tmp_path)
+    cfg.ensure_dirs()
+    (tmp_path / ".webnovel" / "state.json").write_text("{}", encoding="utf-8")
+    chapters_dir = tmp_path / "正文"
+    chapters_dir.mkdir(parents=True, exist_ok=True)
+    (chapters_dir / "第0003章.md").write_text("第三章正文内容", encoding="utf-8")
+
+    service = ChapterCommitService(tmp_path)
+    payload = service.build_commit(
+        chapter=3,
+        review_result={"blocking_count": 0},
+        fulfillment_result={"planned_nodes": [], "covered_nodes": [], "missed_nodes": [], "extra_nodes": []},
+        disambiguation_result={"pending": []},
+        extraction_result={
+            "summary_text": "本章摘要",
+            "state_deltas": [{"entity_id": "xiaoyan", "field": "realm", "old": "斗者", "new": "斗师"}],
+            "entity_deltas": [
+                {
+                    "entity_id": "xiaoyan",
+                    "canonical_name": "萧炎",
+                    "entity_type": "角色",
+                    "tier": "核心",
+                }
+            ],
+            "entities_appeared": [{"id": "xiaoyan", "mentions": ["萧炎"], "confidence": 0.95}],
+            "scenes": [
+                {
+                    "index": 1,
+                    "start_line": 1,
+                    "end_line": 12,
+                    "location": "山门",
+                    "summary": "萧炎完成突破",
+                    "characters": ["xiaoyan"],
+                }
+            ],
+            "accepted_events": [],
+        },
+    )
+
+    writer = IndexProjectionWriter(tmp_path)
+    writer.apply(payload)
+    writer.apply(payload)
+
+    manager = IndexManager(cfg)
+    assert manager.get_chapter(3)["summary"] == "本章摘要"
+    assert len(manager.get_chapter_appearances(3)) == 1
+    assert len(manager.get_scenes(3)) == 1
+    assert len(manager.get_chapter_state_changes(3)) == 1
+    assert manager.get_entity("xiaoyan")["canonical_name"] == "萧炎"
+
+
 def test_index_projection_writer_records_state_change_from_event(tmp_path):
     cfg = DataModulesConfig.from_project_root(tmp_path)
     cfg.ensure_dirs()
@@ -448,6 +502,23 @@ def test_summary_projection_writer_writes_summary_markdown(tmp_path):
     assert "剧情摘要" in summary_path.read_text(encoding="utf-8")
 
 
+def test_summary_projection_writer_replay_overwrites_not_appends(tmp_path):
+    cfg = DataModulesConfig.from_project_root(tmp_path)
+    cfg.ensure_dirs()
+    writer = SummaryProjectionWriter(tmp_path)
+    payload = {
+        "meta": {"status": "accepted", "chapter": 3},
+        "summary_text": "本章主角发现陷阱并决定隐忍。",
+    }
+
+    writer.apply(payload)
+    writer.apply(payload)
+
+    summary_path = tmp_path / ".webnovel" / "summaries" / "ch0003.md"
+    text = summary_path.read_text(encoding="utf-8")
+    assert text.count("本章主角发现陷阱并决定隐忍。") == 1
+
+
 def test_memory_projection_writer_maps_commit_into_scratchpad(tmp_path):
     cfg = DataModulesConfig.from_project_root(tmp_path)
     cfg.ensure_dirs()
@@ -468,6 +539,84 @@ def test_memory_projection_writer_maps_commit_into_scratchpad(tmp_path):
     chars = store.query(category="character_state", status="active")
     assert result["applied"] is True
     assert any(x.subject == "xiaoyan" and x.field == "realm" for x in chars)
+
+
+def test_memory_projection_writer_is_idempotent_for_replay(tmp_path):
+    cfg = DataModulesConfig.from_project_root(tmp_path)
+    cfg.ensure_dirs()
+    writer = MemoryProjectionWriter(tmp_path)
+    payload = {
+        "meta": {"status": "accepted", "chapter": 3},
+        "state_deltas": [
+            {"entity_id": "xiaoyan", "field": "realm", "old": "斗者", "new": "斗师"}
+        ],
+        "entity_deltas": [],
+        "accepted_events": [],
+    }
+
+    writer.apply(payload)
+    writer.apply(payload)
+
+    store = ScratchpadManager(cfg)
+    chars = [
+        item
+        for item in store.query(category="character_state", subject="xiaoyan", status=None)
+        if item.field == "realm" and item.source_chapter == 3
+    ]
+    assert len(chars) == 1
+
+
+def test_vector_projection_writer_is_idempotent_for_replay(tmp_path, monkeypatch):
+    import data_modules.rag_adapter as rag_module
+
+    class StubClient:
+        async def embed_batch(self, texts, skip_failures=True):
+            return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(rag_module, "get_client", lambda config: StubClient())
+    cfg = DataModulesConfig.from_project_root(tmp_path)
+    cfg.ensure_dirs()
+    writer = VectorProjectionWriter(tmp_path)
+    payload = {
+        "meta": {"status": "accepted", "chapter": 3},
+        "summary_text": "本章主角发现陷阱并决定隐忍。",
+        "entity_deltas": [
+            {
+                "entity_id": "xiaoyan",
+                "canonical_name": "萧炎",
+                "type": "角色",
+                "chapter": 3,
+            }
+        ],
+        "accepted_events": [
+            {
+                "event_id": "evt-power-3",
+                "chapter": 3,
+                "event_type": "power_breakthrough",
+                "subject": "xiaoyan",
+                "payload": {"to": "斗师"},
+            }
+        ],
+        "scenes": [
+            {
+                "index": 1,
+                "location": "山门",
+                "summary": "萧炎完成突破",
+            }
+        ],
+    }
+
+    writer.apply(payload)
+    writer.apply(payload)
+
+    with sqlite3.connect(cfg.vector_db) as conn:
+        vector_count = conn.execute("SELECT COUNT(*) FROM vectors").fetchone()[0]
+        bm25_chunk_count = conn.execute("SELECT COUNT(DISTINCT chunk_id) FROM bm25_index").fetchone()[0]
+        doc_count = conn.execute("SELECT COUNT(*) FROM doc_stats").fetchone()[0]
+
+    assert vector_count == 4
+    assert bm25_chunk_count == 4
+    assert doc_count == 4
 
 
 def test_memory_projection_writer_maps_open_loop_event_into_scratchpad(tmp_path):

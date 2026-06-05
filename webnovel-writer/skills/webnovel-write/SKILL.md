@@ -63,6 +63,9 @@ GENRE="$(python -X utf8 -c "import json,sys; s=json.load(open('${PROJECT_ROOT}/.
 
 python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${WORKSPACE_ROOT}" \
   story-system "${CHAPTER_GOAL}" --genre "${GENRE}" --chapter {chapter_num} --persist --emit-runtime-contracts --format both
+
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" \
+  write-gate --chapter {chapter_num} --stage prewrite --format json
 ```
 
 必备文件：`MASTER_SETTING.json`（调性/禁忌）、`volume_{NNN}.json`（卷级节奏）、`chapter_{NNN}.review.json`（必须节点/禁区）。缺失则阻断。
@@ -141,6 +144,9 @@ Data Agent 只提取事实+生成 artifacts，不直接写 state/index/summaries
 #### 5.2 CHAPTER_COMMIT
 
 ```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" \
+  write-gate --chapter {chapter_num} --stage precommit --format json
+
 python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" chapter-commit \
   --chapter {chapter_num} \
   --review-result "${PROJECT_ROOT}/.webnovel/tmp/review_results.json" \
@@ -157,9 +163,19 @@ projection_status 五项（state/index/summary/memory/vector）全部 done 或 s
 
 chapter_status 由 projection writer 自动推进：accepted→committed，rejected→rejected。
 
+```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" \
+  write-gate --chapter {chapter_num} --stage postcommit --format json
+```
+
 #### 5.4 失败隔离
 
-commit 未生成→重跑 5.2。projection 失败→只补跑失败项。不回退 Step 1-4。
+commit 未生成→重跑 5.2。projection 失败→只补跑 projection，不回退 Step 1-4。
+
+```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" \
+  projections retry --chapter {chapter_num} --format json
+```
 
 ### Step 6：Git 备份
 
@@ -179,6 +195,7 @@ python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" bac
 4. anti_ai_force_check=pass（`--minimal` 除外）
 5. accepted CHAPTER_COMMIT，projection 五项 done/skipped
 6. chapter_status=committed（projection 自动推进）
+7. `write-gate` 的 prewrite / precommit / postcommit 均通过
 
 ## 失败恢复
 

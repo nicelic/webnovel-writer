@@ -30,10 +30,14 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from runtime_compat import normalize_windows_path
+from runtime_compat import enable_windows_utf8_stdio, normalize_windows_path
 from project_locator import resolve_project_root, write_current_project_pointer, update_global_registry_current_project
 
 from .story_runtime_health import build_story_runtime_health
+
+
+if sys.platform == "win32":
+    enable_windows_utf8_stdio(skip_in_pytest=True)
 
 
 def _scripts_dir() -> Path:
@@ -233,6 +237,58 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     return 0 if report["ok"] else 1
 
 
+def cmd_project_status(args: argparse.Namespace) -> int:
+    from .project_status import build_project_status, format_project_status
+
+    try:
+        root: Path | str | None = _resolve_root(args.project_root)
+    except FileNotFoundError:
+        root = args.project_root or None
+    report = build_project_status(root, chapter=args.chapter)
+    print(format_project_status(report, args.format))
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    from .doctor import build_doctor_report, format_doctor_report
+
+    preflight_report = _build_preflight_report(args.project_root)
+    root: Path | str | None = preflight_report.get("project_root") or args.project_root or None
+    report = build_doctor_report(
+        root,
+        chapter=args.chapter,
+        deep=bool(args.deep),
+        preflight_report=preflight_report,
+    )
+    print(format_doctor_report(report, args.format))
+    return 0 if report.get("ok") else 1
+
+
+def cmd_write_gate(args: argparse.Namespace) -> int:
+    from .write_gates import format_gate_report, run_write_gate
+
+    root = _resolve_root(args.project_root)
+    report = run_write_gate(root, chapter=args.chapter, stage=args.stage)
+    print(format_gate_report(report, args.format))
+    return 0 if report.get("ok") else 1
+
+
+def cmd_projections(args: argparse.Namespace) -> int:
+    from .projections import format_projection_report, replay_projections, retry_projection
+
+    root = _resolve_root(args.project_root)
+    if args.projection_action == "retry":
+        report = retry_projection(root, chapter=args.chapter)
+    else:
+        report = replay_projections(
+            root,
+            start_chapter=args.from_chapter,
+            end_chapter=args.to_chapter,
+        )
+    print(format_projection_report(report, args.format))
+    return 0 if report.get("ok") else 1
+
+
 def cmd_use(args: argparse.Namespace) -> int:
     project_root = normalize_windows_path(args.project_root).expanduser()
     try:
@@ -281,6 +337,35 @@ def main() -> None:
     p_preflight = sub.add_parser("preflight", help="校验统一 CLI 运行环境与 project_root")
     p_preflight.add_argument("--format", choices=["text", "json"], default="text", help="输出格式")
     p_preflight.set_defaults(func=cmd_preflight)
+
+    p_project_status = sub.add_parser("project-status", help="输出机器可读的项目短状态")
+    p_project_status.add_argument("--chapter", type=int, default=None, help="目标章节号")
+    p_project_status.add_argument("--format", choices=["summary", "json"], default="summary", help="输出格式")
+    p_project_status.set_defaults(func=cmd_project_status)
+
+    p_doctor = sub.add_parser("doctor", help="阶段感知的只读项目体检")
+    p_doctor.add_argument("--chapter", type=int, default=None, help="目标章节号")
+    p_doctor.add_argument("--deep", action="store_true", help="包含 dashboard 等较深检查")
+    p_doctor.add_argument("--format", choices=["text", "json"], default="text", help="输出格式")
+    p_doctor.set_defaults(func=cmd_doctor)
+
+    p_write_gate = sub.add_parser("write-gate", help="写章自然边界校验")
+    p_write_gate.add_argument("--chapter", type=int, required=True, help="目标章节号")
+    p_write_gate.add_argument("--stage", choices=["prewrite", "precommit", "postcommit"], required=True, help="校验阶段")
+    p_write_gate.add_argument("--format", choices=["json", "text"], default="json", help="输出格式")
+    p_write_gate.set_defaults(func=cmd_write_gate)
+
+    p_projections = sub.add_parser("projections", help="从已有 commit 补跑或重放 projection")
+    projections_sub = p_projections.add_subparsers(dest="projection_action", required=True)
+    p_projection_retry = projections_sub.add_parser("retry", help="补跑单章 projection")
+    p_projection_retry.add_argument("--chapter", type=int, required=True, help="目标章节号")
+    p_projection_retry.add_argument("--format", choices=["json", "text"], default="json", help="输出格式")
+    p_projection_retry.set_defaults(func=cmd_projections)
+    p_projection_replay = projections_sub.add_parser("replay", help="按章节范围重放 projection")
+    p_projection_replay.add_argument("--from-chapter", type=int, required=True, help="起始章节号")
+    p_projection_replay.add_argument("--to-chapter", type=int, required=True, help="结束章节号")
+    p_projection_replay.add_argument("--format", choices=["json", "text"], default="json", help="输出格式")
+    p_projection_replay.set_defaults(func=cmd_projections)
 
     p_use = sub.add_parser("use", help="绑定当前工作区使用的书项目（写入指针/registry）")
     p_use.add_argument("project_root", help="书项目根目录（必须包含 .webnovel/state.json）")
