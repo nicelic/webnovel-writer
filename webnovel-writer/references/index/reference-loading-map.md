@@ -98,8 +98,9 @@
 | 文件 | 现状 |
 |------|------|
 | `skills/webnovel-write/references/style-variants.md` | 未在当前 write 流程中直接加载 |
-| `skills/webnovel-write/references/writing/combat-scenes.md` | 由 CSV `场景写法` 承担战斗触发，不直接 Read |
-| `skills/webnovel-write/references/writing/dialogue-writing.md` | 由 CSV `写作技法` 承担对话触发，不直接 Read |
-| `skills/webnovel-write/references/writing/emotion-psychology.md` | 由 CSV `写作技法` 承担情感触发，不直接 Read |
+| `skills/webnovel-write/references/writing/combat-scenes.md` | 已 stub 化，正文迁至 CSV `场景写法` |
+| `skills/webnovel-write/references/writing/dialogue-writing.md` | 已 stub 化，正文迁至 CSV `写作技法` |
+| `skills/webnovel-write/references/writing/emotion-psychology.md` | 已 stub 化，正文迁至 CSV `写作技法` |
+| `skills/webnovel-write/references/writing/scene-description.md` | 已 stub 化，正文迁至 CSV `写作技法` |
 | `skills/webnovel-review/references/common-mistakes.md` | 未在当前 review 流程中直接加载 |
 | `skills/webnovel-review/references/pacing-control.md` | 未在当前 review 流程中直接加载 |
