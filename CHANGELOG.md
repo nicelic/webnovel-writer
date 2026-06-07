@@ -26,6 +26,7 @@
 - 收紧 commit artifacts、projection writers、write-gate 和 postcommit 的结构化校验。
 - 轻量化多个 Skill / Agent 的提示词，补充 reference loading map 和 region-read 规则。
 - 增加 prompt integrity、unit tests、behavior eval，覆盖 artifact ownership、最小写章模式、projection retry、blocking review、断点续跑和日志脱敏。
+- `Plugin Release` 工作流改为推送到 `master` 后自动发版，并保留手动兜底入口。
 
 ### 验证
 

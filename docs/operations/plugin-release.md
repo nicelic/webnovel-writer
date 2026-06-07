@@ -64,18 +64,20 @@ git diff --check
 
 涉及代码或提示词变化时，还要运行对应 pytest、行为评估或 smoke test，并把结果写进 `releases/vX.Y.Z.md` 的“验证”小节。
 
-## 通过 GitHub Actions 发版
+## 自动发版
 
 1. 确认本地校验通过。
-2. 提交并推送版本说明和版本元数据。
-3. 打开仓库 Actions 页面，选择 `Plugin Release`。
-4. 输入 `version`，例如 `6.2.0`。
-5. 工作流会自动：
+2. 提交并推送版本说明和版本元数据到 `master`。
+3. `Plugin Release` 工作流会自动：
    - 校验 `plugin.json`、`marketplace.json`、README 版本一致。
    - 校验 `CHANGELOG.md` 和 `releases/vX.Y.Z.md` 存在且覆盖上个 tag。
    - 校验插件包结构。
    - 创建并推送 `vX.Y.Z` tag。
    - 使用 `releases/vX.Y.Z.md` 创建 GitHub Release。
+
+如果对应 tag 已存在，工作流不会重复打 tag；如果 GitHub Release 已存在，也会自动跳过。若之前只创建了 tag 但 Release 缺失，重跑工作流会补建 Release。
+
+也可以在 Actions 页面手动选择 `Plugin Release` 兜底触发。手动运行时可以输入 `version`，也可以留空让工作流从 `plugin.json` 读取当前版本。
 
 ## 自动版本校验
 

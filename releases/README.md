@@ -17,6 +17,7 @@ git diff --stat v上一版本..HEAD
 3. 再写“是否需要改旧项目”和“已知影响”。
 4. 最后写“给维护者”，记录 CLI、schema、测试、CI、内部结构变化。
 5. 运行 `validate_release_notes.py` 检查格式和范围。
+6. 推送到 `master` 后由 `Plugin Release` 工作流自动创建 tag 和 GitHub Release；已存在的 tag 或 Release 不会重复创建。
 
 ## 固定模板
 
