@@ -190,18 +190,39 @@ __pycache__/
         backup_dir = self.project_root / ".webnovel" / "backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_name = f"ch{chapter_num:04d}_{timestamp}"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        backup_name = f"snapshot_ch{chapter_num:04d}_{timestamp}"
         backup_path = backup_dir / backup_name
 
         try:
-            # 备份 state.json
+            backup_path.mkdir(parents=True, exist_ok=True)
+            copied = []
+
+            for folder_name in ("正文", "大纲", "设定集"):
+                source_dir = self.project_root / folder_name
+                if source_dir.exists():
+                    shutil.copytree(source_dir, backup_path / folder_name)
+                    copied.append(folder_name)
+
             state_file = self.project_root / ".webnovel" / "state.json"
             if state_file.exists():
-                backup_path.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(state_file, backup_path / "state.json")
+                target_state_dir = backup_path / ".webnovel"
+                target_state_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(state_file, target_state_dir / "state.json")
+                copied.append(".webnovel/state.json")
+
+            snapshots = sorted(
+                (path for path in backup_dir.glob("snapshot_ch*") if path.is_dir()),
+                key=lambda path: path.name,
+            )
+            for old_snapshot in snapshots[:-10]:
+                shutil.rmtree(old_snapshot)
 
             print(f"✅ 本地备份完成: {backup_path}")
+            if copied:
+                print(f"📦 已备份: {', '.join(copied)}")
+            else:
+                print("⚠️  未找到正文/大纲/设定集或 state.json 可备份")
             return True
         except OSError as e:
             print(f"❌ 本地备份失败: {e}")

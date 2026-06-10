@@ -75,9 +75,9 @@ def rollback(self, chapter: int) -> bool:
 - Modify: `webnovel-writer/scripts/backup_manager.py:175-195`
 - Test: `webnovel-writer/scripts/tests/test_backup_manager.py`
 
-- [ ] **Step 1: 写测试**：模拟 git 不可用（monkeypatch `_git_available` 为 False），项目含 `正文/第0001章-x.md`，调用 `backup()` 后断言备份目录里存在该正文文件副本。
-- [ ] **Step 2: 实现**：降级路径把 `正文/`、`大纲/`、`设定集/`、`.webnovel/state.json` 全部 `shutil.copytree/copy2` 进 `.webnovel/backups/snapshot_ch{N}_{ts}/`；输出明确列出备份了什么。保留按数量滚动清理（最多 10 个 snapshot）。
-- [ ] **Step 3: 提交** `fix: degraded backup covers manuscript files`。
+- [x] **Step 1: 写测试**：模拟 git 不可用（monkeypatch `_git_available` 为 False），项目含 `正文/第0001章-x.md`，调用 `backup()` 后断言备份目录里存在该正文文件副本。
+- [x] **Step 2: 实现**：降级路径把 `正文/`、`大纲/`、`设定集/`、`.webnovel/state.json` 全部 `shutil.copytree/copy2` 进 `.webnovel/backups/snapshot_ch{N}_{ts}/`；输出明确列出备份了什么。保留按数量滚动清理（最多 10 个 snapshot）。
+- [x] **Step 3: 提交** `fix: degraded backup covers manuscript files`。
 
 ### Task 4: init 重跑不得静默覆盖损坏的 state.json
 
