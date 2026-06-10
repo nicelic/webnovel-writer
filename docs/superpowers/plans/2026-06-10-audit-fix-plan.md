@@ -105,9 +105,9 @@ def rollback(self, chapter: int) -> bool:
 - Modify: `webnovel-writer/scripts/archive_manager.py:125-128, 494-508`
 - Test: `webnovel-writer/scripts/data_modules/tests/test_archive_manager.py`
 
-- [ ] **Step 1: `save_archive` 改用 `atomic_write_json`**（归档是数据被移出 state 后的唯一副本）。
-- [ ] **Step 2: `restore_character` 顺序反转**：先恢复 SQLite，确认成功后才从归档 JSON 删除该角色；SQLite 失败时归档保持原样并返回错误。写测试：monkeypatch SQLite 恢复抛异常，断言归档文件未被修改。
-- [ ] **Step 3: 提交** `fix: archive writes atomic, restore is delete-last`。
+- [x] **Step 1: `save_archive` 改用 `atomic_write_json`**（归档是数据被移出 state 后的唯一副本）。
+- [x] **Step 2: `restore_character` 顺序反转**：先恢复 SQLite，确认成功后才从归档 JSON 删除该角色；SQLite 失败时归档保持原样并返回错误。写测试：monkeypatch SQLite 恢复抛异常，断言归档文件未被修改。
+- [x] **Step 3: 提交** `fix: archive writes atomic, restore is delete-last`。
 
 ---
 
